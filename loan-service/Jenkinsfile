@@ -2,10 +2,10 @@ pipeline {
   agent any
   stages{
   stage('Git') {
-   steps{
-       checkout scm
-       }
-   }
+  steps{
+      checkout scm
+      }
+  }
     stage('Setup') {
       steps{
         sh '''
