@@ -1,0 +1,119 @@
+DOING
+Authentication service
+- auth-service:API keys: DONE
+- auth-service:API oauth tokens --> jwt : DONE
+- loan-factory: get token on startup DONE
+- loan-factory: add token to header DONE
+- loan-service: get public key: DONE
+- loan service: require jwt with appropriate scope - DOING
+- other services: same as loan service
+
+TODO
+- use envoy to build service mesh
+
+- end-to-end tests across all services
+- permissions api
+- service template / thingy that implements all the required goodies once for all services.
+- flip all services to run on port 80, so we can get rid of consul service discovery and port stuff.
+- deploy to kubernetes locally
+
+DONE
+- make zipkin dependent on environment variable, changed.
+
+
+
+
+
+
+brew services start mysql
+brew services stop mysql
+
+docker pull landoop/kafka-lenses-dev
+docker run -p 3030:3030 --rm --net=host \
+    -e EULA="https://dl.lenses.stream/d/?id=CHECK_YOUR_EMAIL_FOR_KEY" \
+    landoop/kafka-lenses-dev
+
+docker pull landoop/kafka-topics-ui
+docker run --rm -it -p 8000:8000 \
+       -e "KAFKA_REST_PROXY_URL=http://localhost:8082" \
+       landoop/kafka-topics-ui
+
+
+purpose
+demonstrate / understand key concepts and strategies
+
+what: classic microservice architecture with kafka for events, consul for service discovery, vault for secrets.
+circuit breakers to test strategies
+pact for contract testing
+janus as api gateway
+mysql / sqlite for databases
+oauth and jwt for authentication
+xyz for authorization service(lDAP?)
+
+
+options
+run is all in docker vs run it all natively faster!
+
+Jenkins
+Note: When using launchctl the port will be 8080.
+
+To have launchd start jenkins-lts now and restart at login:
+  brew services start jenkins-lts
+Or, if you don't want/need a background service you can just run:
+  jenkins-lts
+  admin / aafe3ebe456e424e823b73abfbd2d5bc
+  admin / admin
+
+
+
+  docker registry
+  Instructions are cryptic, and the provided plist is missing "serve" as an argument...
+Start the Docker registry:
+runs on port 5000
+docker push runs on the daemon, so the insecure registry needs to use the host's public IP address for docker push to work...
+
+http://localhost:5000/v2/loan-service/tags/list
+
+launchctl load ~/Library/LaunchAgents/com.docker.registry.plist
+Restart the docker registry service
+launchctl stop com.docker.registry
+launchctl start com.docker.registry
+Unload the docker registry service
+launchctl unload ~/Library/LaunchAgents/com.docker.registry.plist
+
+
+local kubernetes cluster via docker
+runs inside of the docker VM as a local one node cluster.
+http://blog.xebia.com/running-kubernetes-locally-docker-mac-os-x/
+
+Install cluster UI
+kubectl create -f https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml
+secret "kubernetes-dashboard-certs" created
+serviceaccount "kubernetes-dashboard" created
+role.rbac.authorization.k8s.io "kubernetes-dashboard-minimal" created
+rolebinding.rbac.authorization.k8s.io "kubernetes-dashboard-minimal" created
+deployment.apps "kubernetes-dashboard" created
+service "kubernetes-dashboard" created
+# Run the dashboard
+kubectl proxy
+
+http://127.0.0.1:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#!/cluster?namespace=default
+
+
+docker-compose
+docker-compose up -d
+docker-compose down
+docker-compose build loan-service --no-cache
+https://medium.com/@pcarion/a-consul-a-vault-and-a-docker-walk-into-a-bar-d5a5bf897a87
+
+vault in docker:
+export VAULT_ADDR='http://127.0.0.1:8200'
+vault operator init -key-shares=1 -key-threshold=1
+Unseal Key 1: u9GyhUugy5z+6z/u065z++hsbUvngFDJ5TXCZtLAt60=
+
+Initial Root Token: ed1a8aca-bbfe-4c49-0167-36f0e21b6970
+vault operator unseal u9GyhUugy5z+6z/u065z++hsbUvngFDJ5TXCZtLAt60=
+
+
+UI to visualize Docker: weavescope
+scope launch

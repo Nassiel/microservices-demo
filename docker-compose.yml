@@ -1,0 +1,239 @@
+version: '3'
+services:
+  db:
+    image: mysql
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "mysql-root-password"
+      MYSQL_DATABASE: "user_service_development"
+    volumes:
+      - ./etc/mysql.server:/var/lib/mysql
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+
+  envoy:
+    image: envoyproxy/envoy
+    container_name: envoy
+    volumes:
+      - ./etc/envoy/front-proxy.yaml:/etc/envoy/front-proxy.yaml
+    entrypoint: /usr/local/bin/envoy
+    command: --v2-config-only -c /etc/envoy/front-proxy.yaml --service-cluster front-proxy -l debug
+    expose:
+      - "80"
+      - "8001"
+    ports:
+      - "80:80"
+      - "8001:8001"
+
+  registrator:
+    image: gliderlabs/registrator:latest
+    container_name: registrator
+    command: "-internal=true consul://consul:8500"
+    depends_on:
+    - consul
+    volumes:
+    - /var/run/docker.sock:/tmp/docker.sock
+
+  consul:
+    container_name: consul.server
+    command: agent -server -bind 0.0.0.0 -client 0.0.0.0 -bootstrap-expect=1
+    image: consul:latest
+    volumes:
+      - ./etc/consul.server/config:/consul/config
+      - ./etc/consul.server/data:/consul/data
+    ports:
+      - "8300:8300"
+      - "8500:8500"
+      - "8600:8600/udp"
+    restart: "no"
+
+  vault:
+    container_name: vault.server
+    image: vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./etc/vault.server/config:/vault/config
+      - ./etc/vault.server/data:/vault/data
+      - ./etc/vault.server/logs:/vault/logs
+    cap_add:
+      - IPC_LOCK
+    environment:
+      # - VAULT_LOCAL_CONFIG={"dev_root_token_id":"7734c4e17278665e9085f3a3936b47e1465d035f","backend":{"consul":{"address":"${LOCAL_IP}:8500","advertise_addr":"http://${LOCAL_IP}", "path":"vault/"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":1}}}
+      - VAULT_ADDR=http://127.0.0.1:8200
+    entrypoint: vault server -config=/vault/config/config.json
+    depends_on:
+      - consul
+
+  vault-unseal:
+    container_name: vault-unseal
+    depends_on:
+      - vault
+    build: ./vault-unseal
+    environment:
+    - VAULT_ADDR=http://${LOCAL_IP}:8200
+    command: vault operator unseal u9GyhUugy5z+6z/u065z++hsbUvngFDJ5TXCZtLAt60=
+
+  authentication-service:
+    container_name: authentication-service
+    image: authentication-service
+    depends_on:
+      - db
+      - consul
+    build: ./authentication-service
+    expose:
+      - "3000"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  loan-service:
+    container_name: loan-service
+    image: loan-service
+    depends_on:
+      - db
+      - consul
+      - vault
+    build: ./loan-service
+    expose:
+      - "3000"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  user-service:
+    container_name: user-service
+    image: user-service
+    depends_on:
+      - db
+      - consul
+      - vault
+    build: ./user-service
+    volumes:
+      - ./etc/envoy/service-envoy.yaml:/etc/envoy/service-envoy.yaml
+      - ./etc/envoy/start_service.sh:/usr/local/bin/start_service.sh
+    environment:
+      - SERVICE_NAME=user-service
+    expose:
+      - "3000"
+      - "80"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  zipkin:
+    container_name: zipkin
+    image: openzipkin/zipkin
+    environment:
+      - STORAGE_TYPE=mysql
+      - MYSQL_HOST=mysql
+    expose:
+      - "9411"
+    depends_on:
+      - db
+
+  loan-factory-service:
+    container_name: loan-factory-service
+    image: loan-factory-service
+    depends_on:
+      - consul
+      - vault
+    build: ./loan-factory-service
+    expose:
+      - "3000"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  installment-calculator-service:
+    container_name: installment-calculator-service
+    image: installment-calculator-service
+    depends_on:
+      - consul
+      - vault
+    build: ./installment-calculator-service
+    expose:
+      - "3000"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  scoring-service:
+    container_name: scoring-service
+    image: scoring-service
+    depends_on:
+      - consul
+      - vault
+    build: ./scoring-service
+    expose:
+      - "3000"
+    restart: always
+    labels:
+      - "logio=yes"
+
+  janus:
+    container_name: janus
+    image: quay.io/hellofresh/janus
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./etc/janus/janus.toml:/etc/janus/janus.toml
+      - ./etc/janus/apis:/etc/janus/apis
+
+  end-to-end-testing:
+    container_name: test
+    depends_on:
+      - loan-factory-service
+    build: ./end-to-end-testing
+    restart: always
+
+  # logioweb:
+  #   image: 'quay.io/blacklabelops/logio:latest'
+  #   # container_name: logio
+  #   environment:
+  #     - 'LOGIO_ADMIN_USER='
+  #     - 'LOGIO_ADMIN_PASSWORD='
+  #     - LOGIO_CERTIFICATE_DNAME=
+  #   ports:
+  #     - '28778:28778'
+  #   volumes:
+  #     - '/opt/server'
+  #
+  # harvester:
+  #   image: 'quay.io/blacklabelops/logio:latest'
+  #   environment:
+  #     - 'DELAYED_START=10'
+  #     - 'LOGIO_HARVESTER_NODENAME=DockerLogs'
+  #     - 'LOGIO_HARVESTER_STREAMNAME=UnifiedLogs'
+  #     - 'LOGIO_HARVESTER_LOGFILES='
+  #     - 'LOGS_DIRECTORIES=/var/lib/docker'
+  #     - 'LOG_FILE_PATTERN=*.log'
+  #   volumes:
+  #     - '/var/lib/docker:/var/lib/docker'
+  #   links:
+  #     - logioweb:logio
+  #   user: root
+  #   command: harvester
+  #
+  logio:
+    image: geniousphp/logio
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    ports:
+      - "28778:28778"
+    privileged: true
+    environment: #All these env variables are optionals
+      - PORT=28778
+      - DOCKER_SOCKET=/tmp/docker.sock
+      - SHOW_LOG_BY_LABEL=logio
+
+  ## hystrix cannot connect to the streaming from Janus: Janus says streaming is not supported - but by what?
+  # hystrix:
+  #   image: mlabouardy/hystrix-dashboard
+  #   depends_on:
+  #     - janus
+  #   ports:
+  #     - "9002:9002"
